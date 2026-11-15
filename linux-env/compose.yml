@@ -15,9 +15,9 @@ services:
     volumes:
       # The same path as on the Mac: git worktrees record their main repo by absolute path.
       - ${HOME}/dev:${HOME}/dev
-      # Git and GitHub as on the Mac, read-only.
-      - ${HOME}/.gitconfig:${HOME}/.gitconfig:ro
-      - ${HOME}/.gitignore_global:${HOME}/.gitignore_global:ro
+      # Git and GitHub as on the Mac, read-only. Folders, not files: a file mount keeps the file it
+      # first found, so one replaced on the Mac (as `git config --global` does) would vanish here.
+      - ${HOME}/.dotfiles/git:${HOME}/.dotfiles/git:ro
       - ${HOME}/.config/gh:${HOME}/.config/gh:ro
       # What is installed here rather than built in ~/dev: Linux-only, kept across rebuilds.
       - cargo-registry:${HOME}/.cargo/registry

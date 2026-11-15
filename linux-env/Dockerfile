@@ -28,9 +28,11 @@ RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
     && mkdir -p "$HOST_HOME/.cargo/registry" "$HOST_HOME/.config"
 ENV PATH=$HOST_HOME/.cargo/bin:$PATH
 
-# Git as on the Mac, by its own ~/.gitconfig (mounted, with the ignore file it names): that runs gh
-# from Homebrew's path for GitHub, so gh is there too, logged in by the Mac's ~/.config/gh (mounted).
-RUN sudo mkdir -p /opt/homebrew/bin && sudo ln -s /usr/bin/gh /opt/homebrew/bin/gh
+# Git as on the Mac, by its own ~/.gitconfig: a link into ~/.dotfiles/git (mounted), with the ignore
+# file it names. Its gh signs in to GitHub by the Mac's ~/.config/gh (mounted).
+RUN mkdir -p "$HOST_HOME/.dotfiles/git" \
+    && ln -s "$HOST_HOME/.dotfiles/git/gitconfig" "$HOST_HOME/.gitconfig" \
+    && ln -s "$HOST_HOME/.dotfiles/git/gitignore_global" "$HOST_HOME/.gitignore_global"
 
 # A typed `rm` moves to $DEV/.Trash-1000 (~/dev/.Trash-1000 on the Mac) rather than delete, as on
 # the Mac; trash-list and trash-restore look there. Scripts and make still use the real rm.
