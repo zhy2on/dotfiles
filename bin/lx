@@ -1,0 +1,25 @@
+#!/bin/bash
+# lx [CMD...]: a shell, or CMD, in the dev-linux container, in the folder you are in. ~/dev is
+# mounted at the same path, so a folder under it is the same folder there; elsewhere, it opens ~/dev.
+# Starts the container first if it is not running.
+set -euo pipefail
+
+container=dev-linux
+compose="$HOME/.dotfiles/linux-env/compose.yml"
+
+if [ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null)" != true ]; then
+    docker compose -f "$compose" up -d >&2
+fi
+
+dir=$(pwd -P)
+case "$dir" in
+    "$HOME/dev" | "$HOME/dev/"*) ;;
+    *) dir="$HOME/dev" ;;
+esac
+
+flags=-i
+[ -t 0 ] && [ -t 1 ] && flags=-it
+if [ $# -eq 0 ]; then
+    exec docker exec "$flags" -w "$dir" "$container" bash
+fi
+exec docker exec "$flags" -w "$dir" "$container" bash -ic "$*"

@@ -1,0 +1,36 @@
+# The Linux build machine for ~/dev. Start: docker compose -f ~/.dotfiles/linux-env/compose.yml up -d
+# (or just `lx`). Get in with `lx`.
+name: linux-env
+
+services:
+  linux:
+    build:
+      context: .
+      args:
+        HOST_HOME: ${HOME}
+    image: dev-linux
+    container_name: dev-linux
+    hostname: dev-linux
+    restart: unless-stopped
+    volumes:
+      # The same path as on the Mac: git worktrees record their main repo by absolute path.
+      - ${HOME}/dev:${HOME}/dev
+      # Git and GitHub as on the Mac, read-only.
+      - ${HOME}/.gitconfig:${HOME}/.gitconfig:ro
+      - ${HOME}/.gitignore_global:${HOME}/.gitignore_global:ro
+      - ${HOME}/.config/gh:${HOME}/.config/gh:ro
+      # What is installed here rather than built in ~/dev: Linux-only, kept across rebuilds.
+      - cargo-registry:${HOME}/.cargo/registry
+      - prefix:/opt/arcus
+      - arcusdb-prefix:/opt/arcusdb
+    environment:
+      DEV: ${HOME}/dev
+      ARCUS: ${HOME}/dev/arcus
+      PREFIX: /opt/arcus
+      ARCUSDB_INSTALL_PATH: /opt/arcusdb
+    command: ["sleep", "infinity"]
+
+volumes:
+  cargo-registry:
+  prefix:
+  arcusdb-prefix:
