@@ -1,0 +1,126 @@
+#!/bin/bash
+# cmv SRC... DST: a connected mv. Moves each SRC, then what pointed into it follows: the Claude
+# Code sessions of it and of every folder under it (so `claude --resume` finds them), and the git
+# worktree links. Symlinks to it are not followed. With options, it is a plain mv.
+#
+# Claude Code keeps a folder's sessions in ~/.claude/projects/<its path, each non-alphanumeric
+# byte made '-'>. That name cannot be read back (`a-b` and `a/b` look alike), so a session folder
+# is matched by the "cwd" its transcripts recorded.
+set -euo pipefail
+
+projects="${CLAUDE_PROJECTS:-$HOME/.claude/projects}"
+
+for arg in "$@"; do
+    [[ "$arg" == -* ]] && exec mv "$@"
+done
+[ $# -ge 2 ] || exec mv "$@"
+
+dst="${!#}"
+srcs=("${@:1:$#-1}")
+# Several sources go into a folder; anything else is mv's to refuse.
+if [ ${#srcs[@]} -gt 1 ] && [ ! -d "$dst" ]; then
+    exec mv "$@"
+fi
+
+encode() { printf '%s' "$1" | sed 's/[^a-zA-Z0-9]/-/g'; }
+
+# The Claude sessions running in `$1` or under it, one "pid N: cwd" per line.
+open_sessions() {
+    lsof -a -c claude -d cwd -Fpcn 2>/dev/null | awk -v old="$1" '
+        /^p/ { pid = substr($0, 2) }
+        /^c/ { cmd = substr($0, 2) }
+        /^n/ { cwd = substr($0, 2)
+               if (cmd == "claude" && (cwd == old || index(cwd, old "/") == 1)) print "  pid " pid ": " cwd }'
+}
+
+# Moves the session folders recorded under `$1` to the same places under `$2`.
+move_sessions() {
+    local old="$1" new="$2" dir latest cwd moved target
+    for dir in "$projects"/*/; do
+        dir=${dir%/}
+        latest=$(ls -t "$dir"/*.jsonl 2>/dev/null | head -1 || true)
+        if [ -n "$latest" ]; then
+            cwd=$(grep -o -m1 '"cwd":"[^"]*"' "$latest" | head -1 | sed 's/^"cwd":"//; s/"$//' || true)
+        elif [ "$(basename "$dir")" = "$(encode "$old")" ]; then
+            # Transcripts expire, leaving only memory/; then only the name tells, and only for
+            # `$old` itself, as a folder under it cannot be told from a sibling (`a-b`, `a/b`).
+            cwd="$old"
+        else
+            continue
+        fi
+        case "$cwd" in
+            "$old" | "$old"/*) ;;
+            *) continue ;;
+        esac
+        moved="$new${cwd#"$old"}"
+        target="$projects/$(encode "$moved")"
+        if [ -e "$target" ]; then
+            echo "cmv: $target already exists; left $dir as it is" >&2
+            continue
+        fi
+        # The transcripts, subagents' included, then record the new path.
+        find "$dir" -name '*.jsonl' -exec env OLD="$old" NEW="$new" perl -pi -e \
+            's/"cwd":"\Q$ENV{OLD}\E(?=["\/])/"cwd":"$ENV{NEW}/g' {} +
+        mv "$dir" "$target"
+        echo "cmv: sessions of $cwd -> $moved"
+    done
+}
+
+# Git records the links between a repo and its worktrees by absolute path, both ways: relinks those
+# of each repo and worktree moved from under `$1` to `$2`.
+repair_worktrees() {
+    local old="$1" new="$2" git repo admin path paths
+    while IFS= read -r git; do
+        repo=$(dirname "$git")
+        if [ -d "$git" ]; then
+            # A repo: its worktrees, moved along or not, at where they are now.
+            paths=()
+            for admin in "$git"/worktrees/*/gitdir; do
+                [ -f "$admin" ] || continue
+                path=$(dirname "$(cat "$admin")")
+                case "$path" in "$old" | "$old"/*) path="$new${path#"$old"}" ;; esac
+                [ -e "$path/.git" ] && paths+=("$path")
+            done
+            if [ ${#paths[@]} -gt 0 ]; then
+                git -C "$repo" worktree repair "${paths[@]}" >/dev/null 2>&1 || true
+                echo "cmv: relinked the worktrees of $repo"
+            fi
+        else
+            # A worktree whose repo stayed: point the repo at it again.
+            path=$(sed -n 's/^gitdir: //p' "$git")
+            case "$path" in "$old"/*) continue ;; esac
+            git -C "$repo" worktree repair >/dev/null 2>&1 || true
+            echo "cmv: relinked worktree $repo"
+        fi
+    done < <(find "$new" -maxdepth 5 -name .git -prune 2>/dev/null)
+}
+
+# A session still open there would keep writing under the old path: check them all first, so
+# that nothing moves unless everything can.
+blocked=0
+for src in "${srcs[@]}"; do
+    [ -d "$src" ] || continue
+    open=$(open_sessions "$(cd "$src" && pwd -P)")
+    if [ -n "$open" ]; then
+        echo "cmv: Claude sessions are open under $src; quit them first:" >&2
+        echo "$open" >&2
+        blocked=1
+    fi
+done
+[ "$blocked" -eq 0 ] || exit 1
+
+for src in "${srcs[@]}"; do
+    if [ ! -d "$src" ]; then
+        mv "$src" "$dst"
+        continue
+    fi
+    old=$(cd "$src" && pwd -P)
+    if [ -d "$dst" ]; then
+        new="$(cd "$dst" && pwd -P)/$(basename "$old")"
+    else
+        new="$(cd "$(dirname "$dst")" && pwd -P)/$(basename "$dst")"
+    fi
+    mv "$src" "$dst"
+    move_sessions "$old" "$new"
+    repair_worktrees "$old" "$new"
+done
