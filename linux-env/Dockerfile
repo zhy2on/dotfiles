@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cmake librocksdb-dev protobuf-compiler libprotobuf-dev libprotoc-dev \
         openjdk-17-jdk-headless \
         git gh curl ca-certificates netcat-openbsd \
-        gdb vim less sudo trash-cli bash-completion \
+        gdb vim less sudo trash-cli bash-completion net-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Ubuntu 24.04 ships a user `ubuntu` with uid 1000; use it as `dev`, at home where the Mac user is,
