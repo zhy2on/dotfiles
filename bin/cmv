@@ -5,7 +5,8 @@
 #
 # Claude Code keeps a folder's sessions in ~/.claude/projects/<its path, each non-alphanumeric
 # byte made '-'>. That name cannot be read back (`a-b` and `a/b` look alike), so a session folder
-# is matched by the "cwd" its transcripts recorded.
+# is matched by the one "cwd" its transcripts recorded that makes its name. Not by any other: a
+# session resumed in another folder is copied there, with the cwds of where it ran before.
 set -euo pipefail
 
 projects="${CLAUDE_PROJECTS:-$HOME/.claude/projects}"
@@ -33,35 +34,57 @@ open_sessions() {
                if (cmd == "claude" && (cwd == old || index(cwd, old "/") == 1)) print "  pid " pid ": " cwd }'
 }
 
-# Moves the session folders recorded under `$1` to the same places under `$2`.
-move_sessions() {
-    local old="$1" new="$2" dir latest cwd moved target
-    for dir in "$projects"/*/; do
-        dir=${dir%/}
-        latest=$(ls -t "$dir"/*.jsonl 2>/dev/null | head -1 || true)
-        if [ -n "$latest" ]; then
-            cwd=$(grep -o -m1 '"cwd":"[^"]*"' "$latest" | head -1 | sed 's/^"cwd":"//; s/"$//' || true)
-        elif [ "$(basename "$dir")" = "$(encode "$old")" ]; then
-            # Transcripts expire, leaving only memory/; then only the name tells, and only for
-            # `$old` itself, as a folder under it cannot be told from a sibling (`a-b`, `a/b`).
-            cwd="$old"
+# The folder at or under `$2` whose sessions session folder `$1` holds, or fails.
+owner() {
+    local dir="$1" old="$2" name cwd
+    name=$(basename "$dir")
+    while IFS= read -r cwd; do
+        case "$cwd" in "$old" | "$old"/*) ;; *) continue ;; esac
+        [ "$(encode "$cwd")" = "$name" ] && { printf '%s\n' "$cwd"; return 0; }
+    done < <(find "$dir" -maxdepth 1 -name '*.jsonl' -exec grep -oh '"cwd":"[^"]*"' {} + 2>/dev/null |
+        sort -u | sed 's/^"cwd":"//; s/"$//')
+    # Transcripts expire, leaving only memory/; then only the name tells, and only for `$old`
+    # itself, as a folder under it cannot be told from a sibling (`a-b`, `a/b`).
+    [ "$name" = "$(encode "$old")" ] && { printf '%s\n' "$old"; return 0; }
+    return 1
+}
+
+# Moves folder `$1` to `$2`, or into it when it is there already: entry by entry, folders merged.
+# A session both have (its .jsonl and its folder) stays in `$1`.
+merge() {
+    local src="$1" dst="$2" entry name
+    if [ ! -e "$dst" ]; then
+        mv "$src" "$dst"
+        return
+    fi
+    for entry in "$src"/* "$src"/.[!.]*; do
+        [ -e "$entry" ] || continue
+        name=${entry##*/}
+        if [ -e "$src/${name%.jsonl}.jsonl" ] && [ -e "$dst/${name%.jsonl}.jsonl" ]; then
+            [[ "$name" == *.jsonl ]] && echo "cmv: $dst has session ${name%.jsonl} too; left $src's" >&2
+        elif [ ! -e "$dst/$name" ]; then
+            mv "$entry" "$dst/"
+        elif [ -d "$entry" ] && [ -d "$dst/$name" ]; then
+            merge "$entry" "$dst/$name"
         else
-            continue
+            echo "cmv: $dst/$name already exists; left $entry" >&2
         fi
-        case "$cwd" in
-            "$old" | "$old"/*) ;;
-            *) continue ;;
-        esac
+    done
+    rm -d "$src" 2>/dev/null || true
+}
+
+# Moves the session folders of `$1` and of the folders under it to the same places under `$2`.
+move_sessions() {
+    local old="$1" new="$2" prefix dir cwd moved
+    prefix=$(encode "$old")
+    for dir in "$projects/$prefix" "$projects/$prefix"-*; do
+        [ -d "$dir" ] || continue
+        cwd=$(owner "$dir" "$old") || continue
         moved="$new${cwd#"$old"}"
-        target="$projects/$(encode "$moved")"
-        if [ -e "$target" ]; then
-            echo "cmv: $target already exists; left $dir as it is" >&2
-            continue
-        fi
         # The transcripts, subagents' included, then record the new path.
         find "$dir" -name '*.jsonl' -exec env OLD="$old" NEW="$new" perl -pi -e \
             's/"cwd":"\Q$ENV{OLD}\E(?=["\/])/"cwd":"$ENV{NEW}/g' {} +
-        mv "$dir" "$target"
+        merge "$dir" "$projects/$(encode "$moved")"
         echo "cmv: sessions of $cwd -> $moved"
     done
 }
