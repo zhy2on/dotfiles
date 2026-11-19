@@ -1,6 +1,6 @@
 # Linux 개발 환경 (dev-linux)
 
-- 개발 폴더는 `~/dev`다. 편집, Claude Code, git은 macOS에서 하고, 빌드, 실행, 테스트, ZooKeeper와 클러스터 구성은 Linux 컨테이너 `dev-linux`(Ubuntu 24.04, glibc)에서 한다. Mac에서는 빌드하지 않는다.
+- 개발 폴더는 `~/dev`다. 편집, Claude Code, git은 macOS에서 하고, 빌드, 실행, 테스트, ZooKeeper와 클러스터 구성은 Linux 컨테이너 `dev-linux`(Ubuntu 26.04, glibc)에서 한다. Mac에서는 빌드하지 않는다.
 - 컨테이너에는 `lx`로 들어간다. 지금 폴더 그대로 셸이 열리고, `lx <명령>`은 명령 하나만 실행한다. 컨테이너가 멈춰 있으면 `lx`가 띄운다.
 - 컨테이너 설정은 `~/.dotfiles/linux-env/`(Dockerfile, compose.yml)에 있다. 고친 뒤에는 `docker compose -f ~/.dotfiles/linux-env/compose.yml up -d --build`로 다시 만든다.
 - `~/dev`는 컨테이너에 Mac과 같은 경로로 mount돼 있고, 컨테이너의 홈도 Mac과 같은 경로다.

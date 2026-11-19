@@ -1,7 +1,7 @@
-# A Linux build machine like the CI's: Ubuntu 24.04 with glibc and gcc, plus Rust and Java.
+# A Linux build machine like the CI's: Ubuntu 26.04 with glibc and gcc, plus Rust and Java.
 # Tools only: no source goes in, and nothing is built. ~/dev is mounted at the same path as on the
 # Mac, so ZooKeeper, arcus-memcached and the rest are built and run by hand in its terminal.
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gdb vim less sudo trash-cli bash-completion net-tools \
     && rm -rf /var/lib/apt/lists/*
 
-# Ubuntu 24.04 ships a user `ubuntu` with uid 1000; use it as `dev`, at home where the Mac user is,
+# Ubuntu 26.04 ships a user `ubuntu` with uid 1000; use it as `dev`, at home where the Mac user is,
 # so that `cd` and ~ go where they do on the Mac. Only some of the Mac's home is mounted there; the
 # rest of it (.bashrc, .cargo, ...) is this machine's own.
 ARG HOST_HOME
